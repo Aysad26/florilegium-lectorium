@@ -19,9 +19,9 @@
     let progress=0,speed=1,playing=false,raf=0,previous=null,disposed=false,mode=options.mode==='mask'?'mask':'hinge';
     let orbiting=false,ambientWanted=false,ambientElapsed=0;
     const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)');
-    // Only the drawing is slower. Opening, bouquet and lettering keep their
-    // previous 884 ms timing, after a separate 1400 ms drawing phase.
-    const drawDuration=isPencil?1400:0,motionDuration=isPencil?884:3600;
+    // Pencil retains its separate 1400 ms drawing phase. The opening, bouquet
+    // and lettering then run for 1768 ms with a shared ease-in-out timeline.
+    const drawDuration=isPencil?1400:0,motionDuration=isPencil?1768:3600;
     const duration=drawDuration+motionDuration;
     const svg=el('svg',{viewBox:'0 0 1254 1254',width:'100%',height:'100%',role:'img','aria-label':'Кейс Флорилегия с цветами и наушниками',class:'florilegium-rig','data-rig':'florilegium-styled','data-style':style},container);
     svg.style.cssText='display:block;width:100%;height:100%;overflow:visible;isolation:isolate';
@@ -63,6 +63,7 @@
     }
     svg.dataset.duration=String(duration);
     svg.dataset.drawDuration=String(drawDuration);
+    svg.dataset.motionDuration=String(motionDuration);
     // Variant 02: solid media symbols fly from behind the case as its lid opens.
     // It is part of the same seekable timeline, behind every case surface.
     const mediaIcons=[];
@@ -189,7 +190,7 @@
     function render(value){
       progress=clamp(Number(value)||0);
       const drawProgress=isPencil?phase(progress*duration,0,drawDuration):1;
-      const motionProgress=isPencil?phase(progress*duration,drawDuration,duration):progress;
+      const motionProgress=isPencil?smooth(phase(progress*duration,drawDuration,duration)):progress;
       renderDraw(drawProgress);
       const t=phase(motionProgress,isPencil?0:.055,.455),open=mode==='mask'&&!isPencil?1-(1-phase(motionProgress,.10,.48))**3:smooth(t);
       renderLid(open);cavityShade.setAttribute('opacity',.12*(1-open));
