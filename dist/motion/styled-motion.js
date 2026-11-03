@@ -132,7 +132,14 @@
       const t=phase(progress,.055,.455),open=mode==='mask'?1-(1-phase(progress,.10,.48))**3:smooth(t);
       renderLid(open);cavityShade.setAttribute('opacity',.12*(1-open));
       const bt=phase(progress,.26,.73),rise=spring(bt),sway=Math.sin(bt*Math.PI*3)*(1-bt)*.8;
-      bloom.setAttribute('transform',`translate(0 ${355*(1-rise)}) rotate(${sway} 627 625)`);
+      // Keep the artwork's cut lower edge buried in the case during the bounce.
+      // A small stretch above the rim retains the upward spring of the flowers
+      // without lifting their cropped base (or the sampled white lip) into view.
+      const stretch=1+355*Math.max(0,rise-1)/325;
+      const radians=sway*Math.PI/180;
+      const swayPad=430*Math.abs(Math.sin(radians))+80*(1-Math.cos(radians));
+      const lift=355*Math.max(0,1-rise)+swayPad;
+      bloom.setAttribute('transform',`translate(0 ${lift}) rotate(${sway} 627 625) translate(0 570) scale(1 ${stretch}) translate(0 -570)`);
       bloom.setAttribute('opacity',smooth(phase(progress,.245,.32)));
       lettering.update(progress);
       renderBackground(progress);
