@@ -20,19 +20,19 @@
     const svg=el('svg',{viewBox:'0 0 1254 1254',width:'100%',height:'100%',role:'img','aria-label':'Кейс Флорилегия с цветами и наушниками',class:'florilegium-rig','data-rig':'florilegium-styled','data-style':style},container);
     svg.style.cssText='display:block;width:100%;height:100%;overflow:visible;isolation:isolate';
     const defs=el('defs',{},svg);
-    // Variant 02 alone has a quiet, fixed scatter of solid media symbols.
+    // Variant 02: solid media symbols fly from behind the case as its lid opens.
     // It is part of the same seekable timeline, behind every case surface.
     const mediaIcons=[];
     if(style==='flat'){
       const background=el('g',{'data-layer':'media-background','aria-hidden':'true','pointer-events':'none',fill:'#a8bdcf'},svg);
       const icons=[
-        {name:'play',x:105,y:265,size:100,angle:-14,delay:0,d:'M 6 3.5 Q 6 2 7.5 3 L 21 11 Q 22.5 12 21 13 L 7.5 21 Q 6 22 6 20.5 Z'},
-        {name:'video',x:1120,y:200,size:106,angle:11,delay:.035,d:'M 3 5 H 14 Q 17 5 17 8 V 16 Q 17 19 14 19 H 3 Q 0 19 0 16 V 8 Q 0 5 3 5 Z M 18 9 L 23 6 Q 24 5.5 24 7 V 17 Q 24 18.5 23 18 L 18 15 Z'},
-        {name:'microphone',x:80,y:690,size:88,angle:-9,delay:.065,d:'M 9 3 Q 9 0 12 0 Q 15 0 15 3 V 12 Q 15 15 12 15 Q 9 15 9 12 Z M 5 10 H 7 V 12 A 5 5 0 0 0 17 12 V 10 H 19 V 12 A 7 7 0 0 1 13 18.93 V 21 H 17 V 24 H 7 V 21 H 11 V 18.93 A 7 7 0 0 1 5 12 Z'},
-        {name:'bookmark',x:1310,y:835,size:86,angle:14,delay:.015,d:'M 6 1 H 18 Q 20 1 20 3 V 23 L 12 17.5 L 4 23 V 3 Q 4 1 6 1 Z'},
-        {name:'book',x:130,y:1090,size:118,angle:-12,delay:.05,d:'M 1 3 Q 7 1 11 4 V 22 Q 7 19 1 21 Z M 13 4 Q 17 1 23 3 V 21 Q 17 19 13 22 Z'},
-        {name:'waveform',x:1110,y:1190,size:116,angle:8,delay:.085,d:'M 0 9 H 3 V 15 H 0 Z M 5 5 H 8 V 19 H 5 Z M 10.5 0 H 13.5 V 24 H 10.5 Z M 16 5 H 19 V 19 H 16 Z M 21 9 H 24 V 15 H 21 Z'},
-        {name:'note',x:590,y:42,size:86,angle:13,delay:.025,d:'M 9 4 L 22 1 V 17 A 4.5 3.5 0 1 1 19 13.7 V 7 L 12 8.6 V 20 A 4.5 3.5 0 1 1 9 16.7 Z'}
+        {name:'play',x:110,y:235,ox:500,oy:750,cx:360,cy:230,size:170,angle:-18,delay:0,d:'M 6 3.5 Q 6 2 7.5 3 L 21 11 Q 22.5 12 21 13 L 7.5 21 Q 6 22 6 20.5 Z'},
+        {name:'video',x:1095,y:140,ox:740,oy:720,cx:1015,cy:240,size:185,angle:15,delay:.012,d:'M 3 5 H 14 Q 17 5 17 8 V 16 Q 17 19 14 19 H 3 Q 0 19 0 16 V 8 Q 0 5 3 5 Z M 18 9 L 23 6 Q 24 5.5 24 7 V 17 Q 24 18.5 23 18 L 18 15 Z'},
+        {name:'microphone',x:60,y:635,ox:480,oy:810,cx:175,cy:720,size:150,angle:-13,delay:.022,d:'M 9 3 Q 9 0 12 0 Q 15 0 15 3 V 12 Q 15 15 12 15 Q 9 15 9 12 Z M 5 10 H 7 V 12 A 5 5 0 0 0 17 12 V 10 H 19 V 12 A 7 7 0 0 1 13 18.93 V 21 H 17 V 24 H 7 V 21 H 11 V 18.93 A 7 7 0 0 1 5 12 Z'},
+        {name:'bookmark',x:1170,y:780,ox:790,oy:790,cx:1060,cy:675,size:145,angle:19,delay:.008,d:'M 6 1 H 18 Q 20 1 20 3 V 23 L 12 17.5 L 4 23 V 3 Q 4 1 6 1 Z'},
+        {name:'book',x:155,y:1070,ox:490,oy:870,cx:260,cy:925,size:200,angle:-20,delay:.018,d:'M 1 3 Q 7 1 11 4 V 22 Q 7 19 1 21 Z M 13 4 Q 17 1 23 3 V 21 Q 17 19 13 22 Z'},
+        {name:'waveform',x:1115,y:1130,ox:775,oy:900,cx:1005,cy:1000,size:190,angle:12,delay:.028,d:'M 0 9 H 3 V 15 H 0 Z M 5 5 H 8 V 19 H 5 Z M 10.5 0 H 13.5 V 24 H 10.5 Z M 16 5 H 19 V 19 H 16 Z M 21 9 H 24 V 15 H 21 Z'},
+        {name:'note',x:625,y:70,ox:625,oy:740,cx:625,cy:180,size:145,angle:16,delay:.006,d:'M 9 4 L 22 1 V 17 A 4.5 3.5 0 1 1 19 13.7 V 7 L 12 8.6 V 20 A 4.5 3.5 0 1 1 9 16.7 Z'}
       ];
       for(const icon of icons){
         const group=el('g',{'data-media-icon':icon.name,opacity:0},background);
@@ -41,10 +41,14 @@
     }
     function renderBackground(p){
       for(const icon of mediaIcons){
-        const t=smooth(phase(p,.745+icon.delay,.9+icon.delay));
-        const scale=(.35+.65*t)*icon.size/24;
-        icon.group.setAttribute('opacity',(.62*t).toFixed(5));
-        icon.group.setAttribute('transform',`translate(${icon.x} ${icon.y}) rotate(${icon.angle}) scale(${scale}) translate(-12 -12)`);
+        const t=phase(p,.055+icon.delay,.535+icon.delay);
+        const travel=1-Math.pow(1-t,3),rest=1-travel;
+        const x=rest*rest*icon.ox+2*rest*travel*icon.cx+travel*travel*icon.x;
+        const y=rest*rest*icon.oy+2*rest*travel*icon.cy+travel*travel*icon.y;
+        const scale=(.18+.82*travel)*icon.size/24;
+        const angle=icon.angle*(.25+.75*travel);
+        icon.group.setAttribute('opacity',(.62*smooth(phase(t,0,.26))).toFixed(5));
+        icon.group.setAttribute('transform',`translate(${x} ${y}) rotate(${angle}) scale(${scale}) translate(-12 -12)`);
       }
     }
     const clip=(name,d)=>{const c=el('clipPath',{id:`${uid}-${name}`,clipPathUnits:'userSpaceOnUse'},defs);const p=el('path',{d:d||''},c);return{path:p,url:`url(#${uid}-${name})`}};
