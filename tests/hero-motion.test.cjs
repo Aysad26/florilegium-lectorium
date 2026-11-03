@@ -13,7 +13,7 @@ function eventTarget(extra={}){
   const events={};
   return Object.assign(extra,{addEventListener(type,fn){(events[type]??=[]).push(fn)},dispatch(type,event={}){for(const fn of events[type]||[])fn(event)}});
 }
-function setup({reduced=false,fine=true,hidden=false,failed=false,withoutHero=false}={}){
+function setup({reduced=false,fine=true,hidden=false,failed=false,withoutHero=false,missingVariants=false}={}){
   const fallback={hidden:false},overlay={hidden:false},images=[],created=[],fonts=deferred();
   let now=0,nextTimer=0;const timers=new Map();
   const clock={
@@ -23,21 +23,26 @@ function setup({reduced=false,fine=true,hidden=false,failed=false,withoutHero=fa
     now:()=>now
   };
   const container=eventTarget({dataset:{},children:[],querySelector:()=>fallback,appendChild(n){this.children.push(n)}});
-  const doc=eventTarget({hidden,readyState:'loading',documentElement:{dataset:{}},fonts:{ready:fonts.promise},querySelector:q=>q==='#page-preloader'?overlay:container,createDocumentFragment:()=>({})});
+  const buttons=['original','reveal','sheen'].map(variant=>eventTarget({dataset:{motionVariant:variant},attributes:{},setAttribute(k,v){this.attributes[k]=v}}));
+  const controls={hidden:true,querySelectorAll:()=>buttons};
+  const doc=eventTarget({hidden,readyState:'loading',documentElement:{dataset:{}},fonts:{ready:fonts.promise},querySelector:q=>q==='#page-preloader'?overlay:q==='.motion-variants'?controls:container,createDocumentFragment:()=>({})});
   const reduce=eventTarget({matches:reduced}),pointer=eventTarget({matches:fine});
-  const win=eventTarget({setTimeout:clock.setTimeout,clearTimeout:clock.clearTimeout,matchMedia:q=>q.includes('reduced-motion')?reduce:pointer,createFlorilegiumMotion(_mount,options){
+  const factory=variant=>(_mount,options)=>{
     let progress=0;
-    const rig={svg:{setAttribute(){}},starts:0,pauses:0,seekValues:[],colors:[],destroyed:false,
-      play(){this.starts++},pause(){this.pauses++},seek(p){progress=p;this.seekValues.push(p);options.onProgress(p)},
-      getProgress(){return progress},setGlowColor(c){this.colors.push(c)},destroy(){this.destroyed=true},
+    const rig={variant,svg:{setAttribute(){}},starts:0,pauses:0,seekValues:[],colors:[],destroyed:false,active:false,
+      play(){this.starts++;this.active=true},pause(){this.pauses++;this.active=false},seek(p){progress=p;this.active=false;this.seekValues.push(p);options.onProgress(p)},
+      getProgress(){return progress},destroy(){this.destroyed=true;this.active=false;container.children=container.children.filter(svg=>svg!==this.svg)},
       advance(p){progress=p;options.onProgress(p);if(p===1)options.onComplete()}};
+    if(variant==='original')rig.setGlowColor=function(c){this.colors.push(c)};
     created.push(rig);return rig;
-  }});
+  };
+  const win=eventTarget({setTimeout:clock.setTimeout,clearTimeout:clock.clearTimeout,matchMedia:q=>q.includes('reduced-motion')?reduce:pointer,createFlorilegiumMotion:factory('original')});
+  if(!missingVariants){win.createFlorilegiumMotionReveal=factory('reveal');win.createFlorilegiumMotionSheen=factory('sheen');}
   class Image{constructor(){this.naturalWidth=1254;images.push(this)}decode(){return failed?Promise.reject(new Error('decode failure')):Promise.resolve()}}
   const runtime=vm.createContext({window:win,document:doc,Image,Promise,performance:{now:clock.now}});
   vm.runInContext(preloaderSource,runtime);
   if(!withoutHero)vm.runInContext(source,runtime);
-  return{container,fallback,overlay,images,created,fonts,doc,win,reduce,pointer,clock,async ready(finish=true){win.dispatch('load');fonts.resolve();images.forEach(i=>i.onload());await flush();await flush();if(finish)await clock.advance(1070);return created[0]}};
+  return{container,controls,buttons,fallback,overlay,images,created,fonts,doc,win,reduce,pointer,clock,select(variant){buttons.find(b=>b.dataset.motionVariant===variant).dispatch('click')},async ready(finish=true){win.dispatch('load');fonts.resolve();images.forEach(i=>i.onload());await flush();await flush();if(finish)await clock.advance(1070);return created[0]}};
 }
 (async()=>{
   let s=setup();
@@ -76,7 +81,56 @@ function setup({reduced=false,fine=true,hidden=false,failed=false,withoutHero=fa
   s=setup({fine:false});rig=await s.ready();rig.advance(1);s.container.dispatch('mouseenter');assert.equal(rig.starts,1,'coarse pointer cannot synthesize hover replays');
   s.container.dispatch('focus');assert.equal(rig.starts,2,'keyboard focus can replay');
 
+  s=setup();
+  assert.equal(s.controls.hidden,true,'comparison controls stay hidden until assets and rigs are ready');
+  rig=await s.ready(false);assert.equal(s.controls.hidden,false);
+  s.select('sheen');let selected=s.created.at(-1);
+  assert.equal(rig.destroyed,true);assert.equal(selected.variant,'sheen');assert.equal(selected.starts,0,'selection behind the preloader does not play');
+  assert.equal(selected.setGlowColor,undefined,'fixed-color variants do not expose the optional color API');
+  assert.equal(s.container.dataset.motionVariant,'sheen');
+  assert.equal(s.buttons.find(b=>b.dataset.motionVariant==='sheen').attributes['aria-pressed'],'true');
+  await s.clock.advance(850);assert.equal(s.overlay.hidden,true);assert.equal(selected.starts,0);
+  s.select('reveal');const waiting=selected;selected=s.created.at(-1);
+  assert.equal(waiting.destroyed,true);assert.equal(selected.variant,'reveal');assert.equal(selected.starts,0,'switching during the visual pause still waits');
+  await s.clock.advance(219);assert.equal(selected.starts,0);
+  await s.clock.advance(1);assert.equal(selected.starts,1);assert.equal(s.container.dataset.playCount,'1');
+  assert.equal(s.created.reduce((sum,r)=>sum+r.starts,0),1,'only the last selected scene autoplays');
+  assert.equal(s.container.children.length,1,'switches keep one mounted scene');
+
+  selected.advance(.4);s.select('reveal');
+  assert.equal(s.created.length,3,'same-version clicks reuse the current rig');
+  assert.equal(selected.starts,2,'same-version clicks restart during playback');
+  assert.equal(selected.getProgress(),0);assert.deepEqual(selected.seekValues,[0,0]);
+  s.container.dispatch('mouseenter');assert.equal(selected.starts,2,'hover still cannot interrupt a forced replay');
+  const oldReveal=selected;
+  s.select('sheen');selected=s.created.at(-1);
+  assert.equal(oldReveal.destroyed,true);assert.equal(oldReveal.active,false);assert.equal(selected.starts,1);
+  s.select('original');const oldSheen=selected;selected=s.created.at(-1);
+  assert.equal(oldSheen.destroyed,true);assert.equal(selected.variant,'original');assert.equal(selected.starts,1);
+  assert.equal(s.created.filter(r=>r.active).length,1,'rapid switches stop all prior timelines');
+  assert.equal(s.container.children.length,1);assert.deepEqual(selected.colors,['cyan']);
+  oldReveal.advance(1);oldSheen.advance(1);
+  assert.equal(s.container.dataset.motionState,'playing','late callbacks from discarded scenes cannot finish the active one');
+  assert.equal(s.container.dataset.progress,'0.0000');
+  selected.advance(1);s.select('original');assert.equal(selected.starts,2,'clicking the active version also replays after completion');
+  assert.equal(s.buttons.filter(b=>b.attributes['aria-pressed']==='true').length,1);
+
+  s=setup({reduced:true});await s.ready();
+  s.select('reveal');selected=s.created.at(-1);
+  assert.equal(selected.starts,0);assert.equal(selected.getProgress(),1);assert.equal(s.container.dataset.motionState,'open');
+  s.select('sheen');selected=s.created.at(-1);s.select('sheen');
+  assert.equal(s.created.reduce((sum,r)=>sum+r.starts,0),0,'explicit variant choices respect reduced motion');
+  assert.equal(selected.getProgress(),1);assert.equal(s.container.children.length,1);
+
+  s=setup();await s.ready();s.doc.hidden=true;s.doc.dispatch('visibilitychange');s.select('sheen');selected=s.created.at(-1);
+  assert.equal(selected.starts,0,'selection in a hidden tab waits');
+  s.doc.hidden=false;s.doc.dispatch('visibilitychange');assert.equal(selected.starts,1,'pending selection starts when the page is visible');
+  s.reduce.matches=true;s.reduce.dispatch('change',{matches:true});assert.equal(selected.getProgress(),1);assert.equal(selected.active,false);
+
+  s=setup({missingVariants:true});rig=await s.ready();assert.equal(rig.starts,1);assert.equal(s.controls.hidden,true,'the accepted scene still works if comparison scripts are unavailable');
+
   s=setup({failed:true});await s.ready();assert.equal(s.container.dataset.motionState,'fallback');assert.equal(s.created.length,0);assert.equal(s.fallback.hidden,false);
+  assert.equal(s.controls.hidden,true,'failed initialization keeps unusable comparison controls hidden');
   assert.equal(s.overlay.hidden,true,'a decoding failure cannot trap the page behind an overlay');
 
   s=setup();await s.clock.advance(8000);assert.equal(s.container.dataset.motionState,'fallback','stalled images or fonts have a finite deadline');
@@ -92,5 +146,5 @@ function setup({reduced=false,fine=true,hidden=false,failed=false,withoutHero=fa
     'assets/earbuds.png':'732230cea85027557355891848f474c406615ca6f65e4e68a1cae26e8f92d349'
   };
   for(const[name,sha]of Object.entries(approved))assert.equal(createHash('sha256').update(fs.readFileSync(path.join(root,'dist/motion',name))).digest('hex'),sha,`approved source/asset retained: ${name}`);
-  console.log('PASS: decoded initialization, 650ms loader + 200ms fade + 220ms pause, blocked early input, finite failure/missing-script deadlines, single autoplay, noninterrupting hover, visibility, keyboard replay, reduced motion and unchanged approved assets.');
+  console.log('PASS: decoded initialization, loader/fade/pause, remembered early selection, forced same-version replay, rapid variant changes, one mounted timeline, stale callback isolation, hover/keyboard/visibility lifecycle, reduced motion, failure fallback and unchanged approved assets.');
 })().catch(error=>{console.error(error);process.exitCode=1});

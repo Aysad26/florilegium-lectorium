@@ -1,16 +1,76 @@
-/* The accepted «По эскизу» scene: play once on initialization, replay on hover. */
+/* The accepted scene plus two existing lettering studies for demo comparison. */
 (() => {
   'use strict';
   const container=document.querySelector('#hero-motion');
   if(!container)return;
   const fallback=container.querySelector('img');
+  const controls=document.querySelector('.motion-variants');
+  const buttons=[...(controls?.querySelectorAll('[data-motion-variant]')||[])];
+  const factories={original:'createFlorilegiumMotion',reveal:'createFlorilegiumMotionReveal',sheen:'createFlorilegiumMotionSheen'};
   const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
   const pointer=window.matchMedia('(hover: hover) and (pointer: fine)');
   const assetBase='./motion/assets/';
   const assetNames=['case-empty-open.png','closed-case-v2.png','earbuds.png','bouquet.png'];
   let rig,playing=false,initialPending=true,playCount=0,presentationReady=false,delayPassed=false,initialTimer=0;
+  let selectedVariant='original',generation=0;
   container.dataset.motionState='loading';
   container.dataset.playCount='0';
+  if(controls)controls.hidden=true;
+  function syncSelection(){
+    container.dataset.motionVariant=selectedVariant;
+    buttons.forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.motionVariant===selectedVariant)));
+  }
+  syncSelection();
+
+  function createRig(){
+    const factory=window[factories[selectedVariant]];
+    if(typeof factory!=='function')throw new Error('Animation unavailable');
+    const currentGeneration=++generation;
+    // All styles share the decoded assets. Build off-DOM before replacing the SVG.
+    const mount=document.createDocumentFragment();
+    const next=factory(mount,{
+      assetBase,mode:'hinge',
+      onProgress(p){if(currentGeneration===generation)container.dataset.progress=p.toFixed(4);},
+      onComplete(){
+        if(currentGeneration!==generation)return;
+        playing=false;initialPending=false;container.dataset.motionState='open';
+      }
+    });
+    next.setGlowColor?.('cyan');
+    next.svg.setAttribute('aria-hidden','true');
+    rig?.destroy();
+    rig=next;
+    container.appendChild(rig.svg);
+    if(fallback)fallback.hidden=true;
+    container.dataset.motionState='ready';
+  }
+
+  function showFallback(){
+    window.clearTimeout(assetDeadline);
+    if(initialTimer){window.clearTimeout(initialTimer);initialTimer=0;}
+    ++generation;
+    rig?.destroy();rig=undefined;playing=false;initialPending=false;
+    if(controls)controls.hidden=true;
+    if(fallback)fallback.hidden=false;
+    container.dataset.motionState='fallback';
+    window.lectoriumPreloader?.release();
+  }
+
+  buttons.forEach(button=>button.addEventListener('click',()=>{
+    const variant=button.dataset.motionVariant;
+    if(!Object.hasOwn(factories,variant)||typeof window[factories[variant]]!=='function')return;
+    const changed=variant!==selectedVariant;
+    selectedVariant=variant;syncSelection();
+    // A selection before readiness is remembered, never played behind the loader.
+    if(!rig)return;
+    try{
+      if(changed)createRig();
+      rig.seek(0);playing=false;initialPending=true;
+      container.dataset.motionState='ready';
+      if(reduced.matches)syncReducedMotion();
+      else scheduleInitial();
+    }catch{showFallback();}
+  }));
 
   const pageReady=document.readyState==='complete'?Promise.resolve():new Promise(resolve=>window.addEventListener('load',resolve,{once:true}));
   const fontsReady=document.fonts?.ready||Promise.resolve();
@@ -74,29 +134,12 @@
 
   Promise.race([Promise.all([pageReady,fontsReady,assetsReady]),deadlineReady]).then(()=>{
     window.clearTimeout(assetDeadline);
-    if(typeof window.createFlorilegiumMotion!=='function')throw new Error('Animation unavailable');
-    // Construct off-DOM and reveal only after all raster layers have decoded.
-    const mount=document.createDocumentFragment();
-    rig=window.createFlorilegiumMotion(mount,{
-      assetBase,mode:'hinge',
-      onProgress(p){container.dataset.progress=p.toFixed(4);},
-      onComplete(){playing=false;initialPending=false;container.dataset.motionState='open';}
-    });
-    rig.setGlowColor('cyan');
-    rig.svg.setAttribute('aria-hidden','true');
-    container.appendChild(rig.svg);
-    if(fallback)fallback.hidden=true;
-    container.dataset.motionState='ready';
+    createRig();
+    if(controls)controls.hidden=!Object.values(factories).every(name=>typeof window[name]==='function');
     if(reduced.matches)syncReducedMotion();
     window.lectoriumPreloader?.release();
     (window.lectoriumPreloader?.ready||Promise.resolve()).then(()=>{
       presentationReady=true;scheduleInitial();
     });
-  }).catch(()=>{
-    window.clearTimeout(assetDeadline);
-    rig?.destroy();rig=undefined;playing=false;initialPending=false;
-    if(fallback)fallback.hidden=false;
-    container.dataset.motionState='fallback';
-    window.lectoriumPreloader?.release();
-  });
+  }).catch(showFallback);
 })();

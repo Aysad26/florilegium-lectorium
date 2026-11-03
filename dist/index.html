@@ -15,6 +15,8 @@
   <script defer src="motion/lettering.js"></script>
   <script defer src="motion/lid.js"></script>
   <script defer src="motion/motion.js"></script>
+  <script defer src="motion/letter-effects.js"></script>
+  <script defer src="motion/lettering-variants.js"></script>
   <script defer src="hero-motion.js"></script>
   <script defer src="page-effects.js"></script>
   <script defer src="stats-counter.js"></script>
@@ -33,7 +35,7 @@
           <span aria-current="page">Главная</span><span>Каталог</span><span>Авторы</span><span>Теги</span><span>О проекте</span>
         </nav>
       </div>
-      <button class="account-button" type="button" data-action="account">Личный кабинет</button>
+      <button class="account-button" type="button" data-action="account" aria-label="Личный кабинет" title="Личный кабинет"><svg class="account-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20v-1.5a7 7 0 0 1 14 0V20"/></svg><span class="account-label">Личный кабинет</span></button>
       <button class="menu-toggle" type="button" aria-controls="header-menu" aria-expanded="false" aria-label="Открыть меню"><span></span><span></span><span></span></button>
     </div>
   </header>
@@ -47,7 +49,14 @@
             <div><dt>120+</dt><dd>лекций</dd></div><div><dt>18</dt><dd>циклов</dd></div><div><dt>180</dt><dd>авторов</dd></div><div><dt>70</dt><dd>тем</dd></div><div><dt>867</dt><dd>часов материалов</dd></div>
           </dl>
         </div>
-        <div class="hero-art" id="hero-motion" tabindex="0" role="img" aria-label="Флорилегий: кейс с цветами и наушниками" data-node-id="1834:850"><img src="assets/img02.png" alt="" width="1254" height="1254" fetchpriority="high"></div>
+        <div class="hero-art" data-node-id="1834:850">
+          <div class="hero-motion" id="hero-motion" tabindex="0" role="img" aria-label="Флорилегий: кейс с цветами и наушниками"><img src="assets/img02.png" alt="" width="1254" height="1254" fetchpriority="high"></div>
+          <div class="motion-variants" role="group" aria-label="Вариант анимации" hidden>
+            <button type="button" data-motion-variant="original" aria-pressed="true" aria-label="01 — По эскизу" title="По эскизу">01</button>
+            <button type="button" data-motion-variant="reveal" aria-pressed="false" aria-label="02 — По буквам" title="По буквам">02</button>
+            <button type="button" data-motion-variant="sheen" aria-pressed="false" aria-label="03 — Блик" title="Блик">03</button>
+          </div>
+        </div>
       </div>
     </section>
     <nav class="topics" id="topics" aria-label="Темы" data-node-id="1834:870">
