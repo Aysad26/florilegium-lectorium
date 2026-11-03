@@ -17,8 +17,12 @@
     const base=options.assetBase||'./assets/',asset=name=>`${base}styles/${style}-${name}.png`;
     const isPencil=style==='pencil';
     let progress=0,speed=1,playing=false,raf=0,previous=null,disposed=false,mode=options.mode==='mask'?'mask':'hinge';
-    // Reserve a slow display frame for the final pose within the 1.4 s budget.
-    const duration=isPencil?1300:3600;
+    let orbiting=false,ambientWanted=false,ambientElapsed=0;
+    const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    // Only the drawing is slower. Opening, bouquet and lettering keep their
+    // previous 884 ms timing, after a separate 1400 ms drawing phase.
+    const drawDuration=isPencil?1400:0,motionDuration=isPencil?884:3600;
+    const duration=drawDuration+motionDuration;
     const svg=el('svg',{viewBox:'0 0 1254 1254',width:'100%',height:'100%',role:'img','aria-label':'Кейс Флорилегия с цветами и наушниками',class:'florilegium-rig','data-rig':'florilegium-styled','data-style':style},container);
     svg.style.cssText='display:block;width:100%;height:100%;overflow:visible;isolation:isolate';
     const defs=el('defs',{},svg);
@@ -58,6 +62,7 @@
       artwork.setAttribute('mask',p>=1?'none':`url(#${uid}-draw-mask)`);
     }
     svg.dataset.duration=String(duration);
+    svg.dataset.drawDuration=String(drawDuration);
     // Variant 02: solid media symbols fly from behind the case as its lid opens.
     // It is part of the same seekable timeline, behind every case surface.
     const mediaIcons=[];
@@ -77,14 +82,30 @@
         el('path',{d:icon.d},group);mediaIcons.push({...icon,group});
       }
     }
-    function renderBackground(p){
+    const orbitRoute=['note','video','bookmark','waveform','book','microphone','play'].map(name=>mediaIcons.find(icon=>icon.name===name));
+    // A two-minute loop follows the existing arrangement around the case.
+    // Smooth tangents join the last point back to the first without a reset.
+    function orbitPosition(index,elapsed){
+      const eased=elapsed-500*(1-Math.exp(-elapsed/500));
+      const position=index+eased/120000*orbitRoute.length;
+      const i=Math.floor(position),t=position-i,n=orbitRoute.length;
+      const [a,b,c,d]=[-1,0,1,2].map(offset=>orbitRoute[((i+offset)%n+n)%n]);
+      const interpolate=key=>.5*((2*b[key])+(-a[key]+c[key])*t+(2*a[key]-5*b[key]+4*c[key]-d[key])*t*t+(-a[key]+3*b[key]-3*c[key]+d[key])*t*t*t);
+      return {x:interpolate('x'),y:interpolate('y'),tilt:4*Math.sin(eased/16000+index)-4*Math.sin(index)};
+    }
+    function renderBackground(p,extra=0){
       for(const icon of mediaIcons){
         const t=phase(p,.055+icon.delay,.535+icon.delay);
         const travel=1-Math.pow(1-t,3),rest=1-travel;
-        const x=rest*rest*icon.ox+2*rest*travel*icon.cx+travel*travel*icon.x;
-        const y=rest*rest*icon.oy+2*rest*travel*icon.cy+travel*travel*icon.y;
+        let x=rest*rest*icon.ox+2*rest*travel*icon.cx+travel*travel*icon.x;
+        let y=rest*rest*icon.oy+2*rest*travel*icon.cy+travel*travel*icon.y;
         const scale=(.18+.82*travel)*icon.size/24;
-        const angle=icon.angle*(.25+.75*travel);
+        let angle=icon.angle*(.25+.75*travel);
+        if(t>=1&&!reduced?.matches){
+          const elapsed=Math.max(0,(p-.535-icon.delay)*duration)+extra;
+          const orbit=orbitPosition(orbitRoute.indexOf(icon),elapsed);
+          x=orbit.x;y=orbit.y;angle+=orbit.tilt;
+        }
         icon.group.setAttribute('opacity',(.62*smooth(phase(t,0,.26))).toFixed(5));
         icon.group.setAttribute('transform',`translate(${x} ${y}) rotate(${angle}) scale(${scale}) translate(-12 -12)`);
       }
@@ -167,8 +188,8 @@
     const lettering=window.createFlorilegiumStyledLettering(defs,artwork,uid,{style,effect:options.letterEffect||({flat:'reveal',pencil:'sheen',line:'wave'})[style]});
     function render(value){
       progress=clamp(Number(value)||0);
-      const drawProgress=isPencil?phase(progress,0,.32):1;
-      const motionProgress=isPencil?phase(progress,.32,1):progress;
+      const drawProgress=isPencil?phase(progress*duration,0,drawDuration):1;
+      const motionProgress=isPencil?phase(progress*duration,drawDuration,duration):progress;
       renderDraw(drawProgress);
       const t=phase(motionProgress,isPencil?0:.055,.455),open=mode==='mask'&&!isPencil?1-(1-phase(motionProgress,.10,.48))**3:smooth(t);
       renderLid(open);cavityShade.setAttribute('opacity',.12*(1-open));
@@ -183,23 +204,39 @@
       bloom.setAttribute('transform',`translate(0 ${lift}) rotate(${sway} 627 625) translate(0 570) scale(1 ${stretch}) translate(0 -570)`);
       bloom.setAttribute('opacity',smooth(phase(motionProgress,.245,.32)));
       lettering.update(motionProgress);
-      renderBackground(motionProgress);
+      renderBackground(motionProgress,ambientElapsed);
       svg.dataset.progress=progress.toFixed(4);svg.dataset.lidOpen=open.toFixed(5);
       svg.dataset.drawProgress=drawProgress.toFixed(5);svg.dataset.motionProgress=motionProgress.toFixed(5);
-      svg.dataset.phase=isPencil&&progress<.32?'drawing':motionProgress<.07?'closed':motionProgress<.25?'lid-opening':motionProgress<.73?'bloom':motionProgress<.97?'lettering':'open';
+      svg.dataset.phase=isPencil&&drawProgress<1?'drawing':motionProgress<.07?'closed':motionProgress<.25?'lid-opening':motionProgress<.73?'bloom':motionProgress<.97?'lettering':'open';
       options.onProgress?.(progress);
     }
-    function pause(){playing=false;previous=null;cancelAnimationFrame(raf);svg.dataset.playing='false';}
+    function pause(){playing=false;orbiting=false;previous=null;cancelAnimationFrame(raf);if(!document.hidden)ambientWanted=false;svg.dataset.playing='false';svg.dataset.orbiting='false';}
+    function startOrbit(){
+      if(disposed||style!=='flat'||progress<1||document.hidden||reduced?.matches||orbiting)return;
+      ambientWanted=true;orbiting=true;previous=performance.now();svg.dataset.orbiting='true';raf=requestAnimationFrame(tick);
+    }
     function tick(now){
-      if(!playing||disposed)return;
+      if((!playing&&!orbiting)||disposed)return;
       if(previous===null)previous=now;
-      const dt=Math.max(0,now-previous);previous=now;render(progress+dt*speed/duration);
-      if(progress>=1){playing=false;previous=null;svg.dataset.playing='false';options.onComplete?.();return;}
+      const dt=Math.max(0,now-previous);previous=now;
+      if(playing){
+        render(progress+dt*speed/duration);
+        if(progress>=1){
+          playing=false;previous=null;svg.dataset.playing='false';options.onComplete?.();
+          startOrbit();return;
+        }
+      }else{
+        ambientElapsed+=dt;
+        renderBackground(1,ambientElapsed);
+        svg.dataset.ambientElapsed=ambientElapsed.toFixed(1);
+      }
       raf=requestAnimationFrame(tick);
     }
-    function play(){if(disposed)return;if(progress>=.9999)render(0);if(playing)return;playing=true;previous=isPencil?performance.now():null;svg.dataset.playing='true';raf=requestAnimationFrame(tick);}
-    const visibility=()=>{if(document.hidden)pause()};
+    function play(){if(disposed||playing)return;cancelAnimationFrame(raf);orbiting=false;ambientWanted=false;ambientElapsed=0;svg.dataset.orbiting='false';svg.dataset.ambientElapsed='0';if(progress>=.9999)render(0);playing=true;previous=isPencil?performance.now():null;svg.dataset.playing='true';raf=requestAnimationFrame(tick);}
+    const visibility=()=>{if(document.hidden)pause();else if(ambientWanted)startOrbit()};
+    const motionPreference=()=>{if(reduced.matches){pause();render(progress);}else if(progress>=1)startOrbit();};
+    reduced?.addEventListener?.('change',motionPreference);
     document.addEventListener('visibilitychange',visibility);render(0);
-    return{svg,play,pause,seek(p){pause();render(p)},getProgress(){return progress},setMode(v){mode=v==='mask'?'mask':'hinge';render(progress)},setSpeed(v){speed=clamp(Number(v)||1,.15,3)},destroy(){disposed=true;pause();document.removeEventListener('visibilitychange',visibility);svg.remove()}};
+    return{svg,play,pause,seek(p){pause();ambientWanted=false;ambientElapsed=0;svg.dataset.ambientElapsed='0';render(p)},getProgress(){return progress},setMode(v){mode=v==='mask'?'mask':'hinge';render(progress)},setSpeed(v){speed=clamp(Number(v)||1,.15,3)},destroy(){disposed=true;pause();document.removeEventListener('visibilitychange',visibility);reduced?.removeEventListener?.('change',motionPreference);svg.remove()}};
   };
 })();

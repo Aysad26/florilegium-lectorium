@@ -32,7 +32,7 @@ for(const style of ['flat','pencil','line']){
       assert.ok(newY>=y-.01,`${style} lower artwork edge lifted at ${frame/1000}: ${x},${y} -> ${newY}`);
     }
   }
-  const peakTime=style==='pencil'?.32+.68*.5624:.5624;
+  const peakTime=style==='pencil'?(1400+884*.5624)/2284:.5624;
   scene.seek(peakTime);const peak=bloom.attrs.transform;
   assert.ok(transformPoint(peak,627,245)[1]<230,'the flowers retain their upward bounce');
   scene.seek(1);for(const point of [[197,574],[627,245],[1057,638]])assert.deepEqual(transformPoint(bloom.attrs.transform,...point),point,'approved final artwork stays unchanged');
