@@ -42,6 +42,11 @@ assert.equal(walk(sheen.defs).filter(n=>/^(animate|set)/i.test(n.tagName)).lengt
 
 const wave=create('line','wave'),glyphs=letters(wave.group);
 assert.equal(glyphs.length,5);
+const flatPaths=letters(reveal.group).map(n=>n.children[0]);
+const linePaths=glyphs.map(n=>n.children[0]);
+for(let i=0;i<5;i++){
+  for(const attr of ['d','transform','stroke-width','stroke-linejoin','paint-order'])assert.equal(flatPaths[i].getAttribute(attr),linePaths[i].getAttribute(attr),'02 uses exactly the same font geometry and weight as 04');
+}
 for(const p of [0,.2,.741]){wave.update(p);assert.ok(glyphs.every(n=>n.dataset.scale==='1.00000'),'no letter pulse before opening');assert.equal(shine(wave.group).getAttribute('opacity'),'0');}
 wave.update(.787);assert.equal(glyphs[0].dataset.scale,'1.16000');assert.equal(glyphs[4].dataset.scale,'1.00000','pulse must travel left-to-right');
 for(let p=0;p<=1;p+=.002){
@@ -49,11 +54,21 @@ for(let p=0;p<=1;p+=.002){
   glyphs.forEach((g,i)=>{
     assert.ok(Number(g.dataset.scale)>=1&&Number(g.dataset.scale)<=1.16);
     const clip=walk(wave.defs).find(n=>n.dataset.letterClipIndex===String(i));
-    assert.equal(g.getAttribute('transform'),clip.getAttribute('transform'),'highlight clip follows each scaled letter');
+    assert.equal(clip.tagName,'path','Chrome clipPath contains direct glyph geometry, not nested groups');
+    assert.equal(clip.getAttribute('transform'),g.getAttribute('transform')+' '+g.children[0].getAttribute('transform'),'direct clip composes pulse and base glyph transforms');
   });
 }
-wave.update(.915);assert.ok(glyphs.every(n=>n.dataset.scale==='1.00000'));
-wave.update(1);assert.equal(shine(wave.group).getAttribute('opacity'),'0');assert.equal(wave.group.dataset.waveActive,'false');
+const waveClip=walk(wave.defs).find(n=>n.getAttribute('id')==='test-line-wave-wave-word-clip');
+assert.equal(waveClip.children.length,5);assert.ok(waveClip.children.every(n=>n.tagName==='path'),'all five clipping glyphs are direct clipPath children');
+wave.update(.905);assert.ok(glyphs.every(n=>n.dataset.scale==='1.00000'));
+assert.equal(shine(wave.group).getAttribute('opacity'),'0','the closing swipe waits for the last letter pulse to settle');
+wave.update(.950);assert.ok(Number(shine(wave.group).getAttribute('opacity'))>.9,'the diagonal swipe is visible at the end');
+assert.equal(wave.group.dataset.waveActive,'false');assert.equal(wave.group.dataset.swipeActive,'true');
+const diagonal=walk(wave.defs).find(n=>n.getAttribute('id')==='test-line-wave-wave-swipe');
+assert.notEqual(diagonal.getAttribute('y1'),diagonal.getAttribute('y2'),'the highlight ridge itself is diagonal');
+const sweepStart=(()=>{wave.update(.92);return Number(wave.group.dataset.sweepX)})();
+wave.update(.975);assert.ok(Number(wave.group.dataset.sweepX)>sweepStart,'swipe travels left to right');
+wave.update(1);assert.equal(shine(wave.group).getAttribute('opacity'),'0');assert.equal(wave.group.dataset.waveActive,'false');assert.equal(wave.group.dataset.swipeActive,'false');
 const first=sample(wave,.81);sample(wave,.9);sample(wave,.1);assert.equal(sample(wave,.81),first,'scrubbing is deterministic without independent timers');
 for(const p of [0,.77,.82,.9,1]){wave.update(p);for(const n of walk(wave.group).filter(n=>n.dataset.glyph))assert.equal(n.getAttribute('fill'),'#164c8b','base letters keep one color before/after the transient white highlight');}
-console.log('PASS: reveal timing/rewind, persistent pencil lettering and fixed grain, sheen bounds, 584ms wave/stagger, synchronized moving clips, stable blue and deterministic seek.');
+console.log('PASS: matching 02/04 serif geometry, reveal timing/rewind, persistent pencil lettering and fixed grain, sheen bounds, 584ms wave/stagger, synchronized moving clips, end-only diagonal swipe, stable blue and deterministic seek.');
