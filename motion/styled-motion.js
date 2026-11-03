@@ -15,11 +15,49 @@
   window.createFlorilegiumStyledMotion=function(container,options={}){
     const style=Object.hasOwn(STYLES,options.style)?options.style:'flat',cfg=STYLES[style],uid=`florilegium-styled-${++count}`;
     const base=options.assetBase||'./assets/',asset=name=>`${base}styles/${style}-${name}.png`;
-    let progress=0,speed=1,playing=false,raf=0,previous=0,disposed=false,mode=options.mode==='mask'?'mask':'hinge';
-    const duration=3600;
+    const isPencil=style==='pencil';
+    let progress=0,speed=1,playing=false,raf=0,previous=null,disposed=false,mode=options.mode==='mask'?'mask':'hinge';
+    // Reserve a slow display frame for the final pose within the 1.4 s budget.
+    const duration=isPencil?1300:3600;
     const svg=el('svg',{viewBox:'0 0 1254 1254',width:'100%',height:'100%',role:'img','aria-label':'Кейс Флорилегия с цветами и наушниками',class:'florilegium-rig','data-rig':'florilegium-styled','data-style':style},container);
     svg.style.cssText='display:block;width:100%;height:100%;overflow:visible;isolation:isolate';
     const defs=el('defs',{},svg);
+    // 03 draws the existing closed artwork with a contour and overlapping
+    // brush passes. The same group survives the opening: no bitmap swap/fade.
+    const drawStrokes=[];
+    let drawFull,lastDraw=-1;
+    const artwork=isPencil?el('g',{'data-layer':'pencil-artwork',mask:`url(#${uid}-draw-mask)`},svg):svg;
+    if(isPencil){
+      const mask=el('mask',{id:`${uid}-draw-mask`,'data-layer':'pencil-draw-mask',maskUnits:'userSpaceOnUse',maskContentUnits:'userSpaceOnUse',x:0,y:0,width:1254,height:1254,'mask-type':'luminance'},defs);
+      const stroke=(d,width,start,end)=>{
+        const node=el('path',{d,fill:'none',stroke:'white','stroke-width':width,'stroke-linecap':'round','stroke-linejoin':'round',pathLength:1,'stroke-dasharray':'1 1','stroke-dashoffset':1,opacity:0,'data-draw-stroke':drawStrokes.length},mask);
+        drawStrokes.push({node,start,end});
+      };
+      stroke('M 447 365 C 306 365 229 449 229 590 L 229 942 C 229 1105 288 1158 445 1158 H 808 C 963 1158 1022 1103 1022 944 V 590 C 1022 449 944 365 804 365 Z',24,0,.62);
+      stroke('M 231 590 C 243 654 1008 654 1020 590',22,.12,.66);
+      for(let i=0;i<8;i++){
+        const y=400+i*105;
+        const d=i%2?`M 1100 ${y-22} C 830 ${y-8} 450 ${y+8} 150 ${y+20}`:`M 150 ${y+20} C 450 ${y+8} 830 ${y-8} 1100 ${y-22}`;
+        stroke(d,160,.10+i*.085,.34+i*.09);
+      }
+      // The closed silhouette is fully painted before this rect unlocks the
+      // empty area above it, where the lid and flowers will subsequently move.
+      drawFull=el('rect',{width:1254,height:1254,fill:'white',opacity:0,'data-draw-full':'true'},mask);
+    }
+    function renderDraw(p){
+      if(!isPencil||p===lastDraw)return;
+      lastDraw=p;
+      for(const {node,start,end}of drawStrokes){
+        const t=phase(p,start,end);
+        node.setAttribute('stroke-dashoffset',(1-t).toFixed(6));
+        node.setAttribute('opacity',t>0?1:0);
+      }
+      drawFull?.setAttribute('opacity',p>=1?1:0);
+      // A completely white mask and no mask have identical coverage. Drop
+      // its compositing cost while the lid/flowers are moving, restore on seek.
+      artwork.setAttribute('mask',p>=1?'none':`url(#${uid}-draw-mask)`);
+    }
+    svg.dataset.duration=String(duration);
     // Variant 02: solid media symbols fly from behind the case as its lid opens.
     // It is part of the same seekable timeline, behind every case surface.
     const mediaIcons=[];
@@ -57,7 +95,7 @@
     const contentWindow=clip('cavity-window','M 145 70 H 1115 V 565 L 1013 578 C 1004 608 966 620 891 631 C 749 653 510 650 365 631 C 293 622 248 610 241 578 L 145 565 Z');
     const frontShape=clip('front','M 215 574 L 272 588 C 280 603 298 610 320 613 C 399 627 507 631 627 630 C 750 632 869 625 940 611 C 962 604 976 597 982 587 L 1040 574 V 1254 H 215 Z');
     const mouthShape=clip('mouth','M 215 505 H 1040 V 650 H 215 Z');
-    const cavity=el('g',{'clip-path':mouthShape.url,'data-layer':'cavity'},svg);image(cavity,'empty');
+    const cavity=el('g',{'clip-path':mouthShape.url,'data-layer':'cavity'},artwork);image(cavity,'empty');
     const cavityShade=el('ellipse',{cx:627,cy:583,rx:340,ry:45,fill:'#062749',opacity:.1},cavity);
 
     // The same topological construction as the approved animation: two surface
@@ -68,7 +106,7 @@
     const horizontal=(cfg.R-cfg.L)/765,offset=cfg.L-245*horizontal;
     const lidTransform=`translate(${offset} 0) scale(${horizontal} 1)`;
     const bodyCover=el('path',{fill:'black',d:'',transform:lidTransform},bodyMask);
-    const lid=el('g',{'data-layer':'lid','data-surface-system':'shared-envelope',transform:lidTransform},svg);
+    const lid=el('g',{'data-layer':'lid','data-surface-system':'shared-envelope',transform:lidTransform},artwork);
     const lidBase=el('path',{d:'',fill:'#fbfcff'},lid);
     const surfaces=el('g',{'clip-path':envelope.url},lid);
     const outer=el('g',{'clip-path':outerClip.url,'data-layer':'lid-outer'},surfaces);
@@ -112,26 +150,29 @@
       return g;
     }
 
-    const content=el('g',{'clip-path':contentWindow.url,'data-layer':'contents'},svg);
+    const content=el('g',{'clip-path':contentWindow.url,'data-layer':'contents'},artwork);
     const bloom=el('g',{'data-layer':'bouquet-and-earbuds'},content);
     const stems=el('g',{'data-layer':'stem-extensions'},bloom);
     for(const[x,c]of [[390,'#58952c'],[627,'#6eab2e'],[859,'#619b27']]){
       el('path',{d:`M ${x} 600 Q ${x-8} 740 ${x+5} 1005`,fill:'none',stroke:style==='pencil'?'#4d853e':c,'stroke-width':style==='flat'?15:12,'stroke-linecap':'round'},stems);
     }
     image(bloom,'reference',{'clip-path':contentShape.url,'data-layer':'selected-artwork'});
-    const front=el('g',{'clip-path':frontShape.url,mask:`url(#${uid}-body-mask)`,'data-layer':'front-shell'},svg);
+    const front=el('g',{'clip-path':frontShape.url,mask:`url(#${uid}-body-mask)`,'data-layer':'front-shell'},artwork);
     image(front,'empty');
     // Entire front lip remains above the emerging contents, including its white
     // thickness. There is no transparent layer swap at the end of the opening.
     const frontRim=el('g',{'data-layer':'front-rim'},front);
     const rimShape=clip('rim-only','M 215 574 H 1040 V 657 H 215 Z');
     image(frontRim,'empty',{'clip-path':rimShape.url});
-    const lettering=window.createFlorilegiumStyledLettering(defs,svg,uid,{style,effect:options.letterEffect||({flat:'reveal',pencil:'sheen',line:'wave'})[style]});
+    const lettering=window.createFlorilegiumStyledLettering(defs,artwork,uid,{style,effect:options.letterEffect||({flat:'reveal',pencil:'sheen',line:'wave'})[style]});
     function render(value){
       progress=clamp(Number(value)||0);
-      const t=phase(progress,.055,.455),open=mode==='mask'?1-(1-phase(progress,.10,.48))**3:smooth(t);
+      const drawProgress=isPencil?phase(progress,0,.32):1;
+      const motionProgress=isPencil?phase(progress,.32,1):progress;
+      renderDraw(drawProgress);
+      const t=phase(motionProgress,isPencil?0:.055,.455),open=mode==='mask'&&!isPencil?1-(1-phase(motionProgress,.10,.48))**3:smooth(t);
       renderLid(open);cavityShade.setAttribute('opacity',.12*(1-open));
-      const bt=phase(progress,.26,.73),rise=spring(bt),sway=Math.sin(bt*Math.PI*3)*(1-bt)*.8;
+      const bt=phase(motionProgress,.26,.73),rise=spring(bt),sway=Math.sin(bt*Math.PI*3)*(1-bt)*.8;
       // Keep the artwork's cut lower edge buried in the case during the bounce.
       // A small stretch above the rim retains the upward spring of the flowers
       // without lifting their cropped base (or the sampled white lip) into view.
@@ -140,22 +181,23 @@
       const swayPad=430*Math.abs(Math.sin(radians))+80*(1-Math.cos(radians));
       const lift=355*Math.max(0,1-rise)+swayPad;
       bloom.setAttribute('transform',`translate(0 ${lift}) rotate(${sway} 627 625) translate(0 570) scale(1 ${stretch}) translate(0 -570)`);
-      bloom.setAttribute('opacity',smooth(phase(progress,.245,.32)));
-      lettering.update(progress);
-      renderBackground(progress);
+      bloom.setAttribute('opacity',smooth(phase(motionProgress,.245,.32)));
+      lettering.update(motionProgress);
+      renderBackground(motionProgress);
       svg.dataset.progress=progress.toFixed(4);svg.dataset.lidOpen=open.toFixed(5);
-      svg.dataset.phase=progress<.07?'closed':progress<.25?'lid-opening':progress<.73?'bloom':progress<.97?'lettering':'open';
+      svg.dataset.drawProgress=drawProgress.toFixed(5);svg.dataset.motionProgress=motionProgress.toFixed(5);
+      svg.dataset.phase=isPencil&&progress<.32?'drawing':motionProgress<.07?'closed':motionProgress<.25?'lid-opening':motionProgress<.73?'bloom':motionProgress<.97?'lettering':'open';
       options.onProgress?.(progress);
     }
-    function pause(){playing=false;previous=0;cancelAnimationFrame(raf);svg.dataset.playing='false';}
+    function pause(){playing=false;previous=null;cancelAnimationFrame(raf);svg.dataset.playing='false';}
     function tick(now){
       if(!playing||disposed)return;
-      if(!previous)previous=now;
+      if(previous===null)previous=now;
       const dt=Math.max(0,now-previous);previous=now;render(progress+dt*speed/duration);
-      if(progress>=1){playing=false;previous=0;svg.dataset.playing='false';options.onComplete?.();return;}
+      if(progress>=1){playing=false;previous=null;svg.dataset.playing='false';options.onComplete?.();return;}
       raf=requestAnimationFrame(tick);
     }
-    function play(){if(disposed)return;if(progress>=.9999)render(0);if(playing)return;playing=true;previous=0;svg.dataset.playing='true';raf=requestAnimationFrame(tick);}
+    function play(){if(disposed)return;if(progress>=.9999)render(0);if(playing)return;playing=true;previous=isPencil?performance.now():null;svg.dataset.playing='true';raf=requestAnimationFrame(tick);}
     const visibility=()=>{if(document.hidden)pause()};
     document.addEventListener('visibilitychange',visibility);render(0);
     return{svg,play,pause,seek(p){pause();render(p)},getProgress(){return progress},setMode(v){mode=v==='mask'?'mask':'hinge';render(progress)},setSpeed(v){speed=clamp(Number(v)||1,.15,3)},destroy(){disposed=true;pause();document.removeEventListener('visibilitychange',visibility);svg.remove()}};
