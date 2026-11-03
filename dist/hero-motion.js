@@ -1,4 +1,4 @@
-/* The accepted scene plus two existing lettering studies for demo comparison. */
+/* The accepted scene plus independently loaded graphic studies for comparison. */
 (() => {
   'use strict';
   const container=document.querySelector('#hero-motion');
@@ -6,7 +6,13 @@
   const fallback=container.querySelector('img');
   const controls=document.querySelector('.motion-variants');
   const buttons=[...(controls?.querySelectorAll('[data-motion-variant]')||[])];
-  const factories={original:'createFlorilegiumMotion',reveal:'createFlorilegiumMotionReveal',sheen:'createFlorilegiumMotionSheen'};
+  const variants={
+    original:{factory:'createFlorilegiumMotion'},
+    reveal:{factory:'createFlorilegiumStyledMotion',style:'flat',letterEffect:'reveal'},
+    sheen:{factory:'createFlorilegiumStyledMotion',style:'pencil',letterEffect:'sheen'},
+    wave:{factory:'createFlorilegiumStyledMotion',style:'line',letterEffect:'wave'}
+  };
+  const readiness={original:'loading',reveal:'loading',sheen:'loading',wave:'loading'};
   const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
   const pointer=window.matchMedia('(hover: hover) and (pointer: fine)');
   const assetBase='./motion/assets/';
@@ -21,15 +27,25 @@
     buttons.forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.motionVariant===selectedVariant)));
   }
   syncSelection();
+  function syncAvailability(){
+    buttons.forEach(button=>{
+      const id=button.dataset.motionVariant;
+      const available=Object.hasOwn(variants,id)&&readiness[id]==='ready'&&typeof window[variants[id].factory]==='function';
+      button.disabled=!available;
+      button.dataset.motionAvailability=readiness[id]||'unavailable';
+    });
+    if(controls)controls.hidden=!rig||typeof window.createFlorilegiumStyledMotion!=='function';
+  }
+  syncAvailability();
 
-  function createRig(){
-    const factory=window[factories[selectedVariant]];
+  function createRig(variant=selectedVariant){
+    const config=variants[variant],factory=window[config.factory];
     if(typeof factory!=='function')throw new Error('Animation unavailable');
-    const currentGeneration=++generation;
-    // All styles share the decoded assets. Build off-DOM before replacing the SVG.
+    const currentGeneration=generation+1;
+    // Build off-DOM first, so a broken optional style cannot remove the current one.
     const mount=document.createDocumentFragment();
     const next=factory(mount,{
-      assetBase,mode:'hinge',
+      assetBase,mode:'hinge',...(config.style?{style:config.style,letterEffect:config.letterEffect}:{}),
       onProgress(p){if(currentGeneration===generation)container.dataset.progress=p.toFixed(4);},
       onComplete(){
         if(currentGeneration!==generation)return;
@@ -38,10 +54,12 @@
     });
     next.setGlowColor?.('cyan');
     next.svg.setAttribute('aria-hidden','true');
+    generation=currentGeneration;
     rig?.destroy();
     rig=next;
     container.appendChild(rig.svg);
     if(fallback)fallback.hidden=true;
+    container.dataset.progress=rig.getProgress().toFixed(4);
     container.dataset.motionState='ready';
   }
 
@@ -58,23 +76,25 @@
 
   buttons.forEach(button=>button.addEventListener('click',()=>{
     const variant=button.dataset.motionVariant;
-    if(!Object.hasOwn(factories,variant)||typeof window[factories[variant]]!=='function')return;
+    if(!Object.hasOwn(variants,variant)||readiness[variant]!=='ready'||typeof window[variants[variant].factory]!=='function')return;
     const changed=variant!==selectedVariant;
-    selectedVariant=variant;syncSelection();
-    // A selection before readiness is remembered, never played behind the loader.
     if(!rig)return;
     try{
-      if(changed)createRig();
-      rig.seek(0);playing=false;initialPending=true;
-      container.dataset.motionState='ready';
-      if(reduced.matches)syncReducedMotion();
-      else scheduleInitial();
-    }catch{showFallback();}
+      if(changed)createRig(variant);
+    }catch{
+      readiness[variant]='unavailable';syncAvailability();return;
+    }
+    selectedVariant=variant;syncSelection();
+    // A ready style may be selected during the loader, but playback still waits.
+    rig.seek(0);playing=false;initialPending=true;
+    container.dataset.motionState='ready';
+    if(reduced.matches)syncReducedMotion();
+    else scheduleInitial();
   }));
 
   const pageReady=document.readyState==='complete'?Promise.resolve():new Promise(resolve=>window.addEventListener('load',resolve,{once:true}));
   const fontsReady=document.fonts?.ready||Promise.resolve();
-  const assetsReady=Promise.all(assetNames.map(name=>new Promise((resolve,reject)=>{
+  const loadAssets=names=>Promise.all(names.map(name=>new Promise((resolve,reject)=>{
     const image=new Image();
     image.onload=()=>{
       if(!image.naturalWidth){reject(new Error('Empty animation asset'));return;}
@@ -83,9 +103,28 @@
     image.onerror=reject;
     image.src=assetBase+name;
   })));
+  const assetsReady=loadAssets(assetNames);
   let assetDeadline;
   const deadlineReady=new Promise((resolve,reject)=>{
     assetDeadline=window.setTimeout(()=>reject(new Error('Animation readiness timeout')),8000);
+  });
+  // Optional images start after window.load, so they cannot hold the main page's
+  // load event or the accepted scene behind a slow or failed comparison asset.
+  pageReady.then(()=>{
+    for(const [id,config]of Object.entries(variants)){
+      if(!config.style)continue;
+      if(typeof window[config.factory]!=='function'){
+        readiness[id]='unavailable';syncAvailability();continue;
+      }
+      let timer;
+      const deadline=new Promise((resolve,reject)=>{
+        timer=window.setTimeout(()=>reject(new Error('Style readiness timeout')),8000);
+      });
+      Promise.race([loadAssets([`styles/${config.style}-reference.png`,`styles/${config.style}-empty.png`]),deadline])
+        .then(()=>{readiness[id]='ready';})
+        .catch(()=>{readiness[id]='unavailable';})
+        .finally(()=>{window.clearTimeout(timer);syncAvailability();});
+    }
   });
 
   function scheduleInitial(){
@@ -134,8 +173,9 @@
 
   Promise.race([Promise.all([pageReady,fontsReady,assetsReady]),deadlineReady]).then(()=>{
     window.clearTimeout(assetDeadline);
+    readiness.original='ready';
     createRig();
-    if(controls)controls.hidden=!Object.values(factories).every(name=>typeof window[name]==='function');
+    syncAvailability();
     if(reduced.matches)syncReducedMotion();
     window.lectoriumPreloader?.release();
     (window.lectoriumPreloader?.ready||Promise.resolve()).then(()=>{

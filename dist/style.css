@@ -50,3 +50,5 @@
 .motion-variants button[aria-pressed=true]{background:#e2edf780;border-color:#08387a50;color:var(--brand)}
 @media(hover:hover){.motion-variants button:hover{background:#e2edf7}}
 @media(max-width:767px){.account-icon{display:block}.account-label{display:none}}
+
+.motion-variants button:disabled{opacity:.4;cursor:default}

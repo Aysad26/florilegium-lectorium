@@ -13,7 +13,7 @@ function eventTarget(extra={}){
   const events={};
   return Object.assign(extra,{addEventListener(type,fn){(events[type]??=[]).push(fn)},dispatch(type,event={}){for(const fn of events[type]||[])fn(event)}});
 }
-function setup({reduced=false,fine=true,hidden=false,failed=false,withoutHero=false,missingVariants=false}={}){
+function setup({reduced=false,fine=true,hidden=false,failed=false,withoutHero=false,missingVariants=false,failedStyles=[],throwStyles=[],deferStyles=false}={}){
   const fallback={hidden:false},overlay={hidden:false},images=[],created=[],fonts=deferred();
   let now=0,nextTimer=0;const timers=new Map();
   const clock={
@@ -23,13 +23,14 @@ function setup({reduced=false,fine=true,hidden=false,failed=false,withoutHero=fa
     now:()=>now
   };
   const container=eventTarget({dataset:{},children:[],querySelector:()=>fallback,appendChild(n){this.children.push(n)}});
-  const buttons=['original','reveal','sheen'].map(variant=>eventTarget({dataset:{motionVariant:variant},attributes:{},setAttribute(k,v){this.attributes[k]=v}}));
+  const buttons=['original','reveal','sheen','wave'].map(variant=>eventTarget({dataset:{motionVariant:variant},attributes:{},disabled:false,setAttribute(k,v){this.attributes[k]=v}}));
   const controls={hidden:true,querySelectorAll:()=>buttons};
   const doc=eventTarget({hidden,readyState:'loading',documentElement:{dataset:{}},fonts:{ready:fonts.promise},querySelector:q=>q==='#page-preloader'?overlay:q==='.motion-variants'?controls:container,createDocumentFragment:()=>({})});
   const reduce=eventTarget({matches:reduced}),pointer=eventTarget({matches:fine});
   const factory=variant=>(_mount,options)=>{
+    if(throwStyles.includes(options.style))throw new Error('Invalid style rig');
     let progress=0;
-    const rig={variant,svg:{setAttribute(){}},starts:0,pauses:0,seekValues:[],colors:[],destroyed:false,active:false,
+    const rig={variant,options,svg:{setAttribute(){}},starts:0,pauses:0,seekValues:[],colors:[],destroyed:false,active:false,
       play(){this.starts++;this.active=true},pause(){this.pauses++;this.active=false},seek(p){progress=p;this.active=false;this.seekValues.push(p);options.onProgress(p)},
       getProgress(){return progress},destroy(){this.destroyed=true;this.active=false;container.children=container.children.filter(svg=>svg!==this.svg)},
       advance(p){progress=p;options.onProgress(p);if(p===1)options.onComplete()}};
@@ -37,12 +38,16 @@ function setup({reduced=false,fine=true,hidden=false,failed=false,withoutHero=fa
     created.push(rig);return rig;
   };
   const win=eventTarget({setTimeout:clock.setTimeout,clearTimeout:clock.clearTimeout,matchMedia:q=>q.includes('reduced-motion')?reduce:pointer,createFlorilegiumMotion:factory('original')});
-  if(!missingVariants){win.createFlorilegiumMotionReveal=factory('reveal');win.createFlorilegiumMotionSheen=factory('sheen');}
-  class Image{constructor(){this.naturalWidth=1254;images.push(this)}decode(){return failed?Promise.reject(new Error('decode failure')):Promise.resolve()}}
+  if(!missingVariants)win.createFlorilegiumStyledMotion=(mount,options)=>factory({flat:'reveal',pencil:'sheen',line:'wave'}[options.style])(mount,options);
+  class Image{constructor(){this.naturalWidth=1254;images.push(this)}decode(){return failed||failedStyles.some(style=>this.src.includes(`/styles/${style}-`))?Promise.reject(new Error('decode failure')):Promise.resolve()}}
   const runtime=vm.createContext({window:win,document:doc,Image,Promise,performance:{now:clock.now}});
   vm.runInContext(preloaderSource,runtime);
   if(!withoutHero)vm.runInContext(source,runtime);
-  return{container,controls,buttons,fallback,overlay,images,created,fonts,doc,win,reduce,pointer,clock,select(variant){buttons.find(b=>b.dataset.motionVariant===variant).dispatch('click')},async ready(finish=true){win.dispatch('load');fonts.resolve();images.forEach(i=>i.onload());await flush();await flush();if(finish)await clock.advance(1070);return created[0]}};
+  const loadImages=async(predicate=()=>true)=>{
+    images.filter(image=>!image.loaded&&predicate(image.src)).forEach(image=>{image.loaded=true;image.onload()});
+    await flush();await flush();
+  };
+  return{container,controls,buttons,fallback,overlay,images,created,fonts,doc,win,reduce,pointer,clock,loadImages,select(variant){buttons.find(b=>b.dataset.motionVariant===variant).dispatch('click')},async ready(finish=true){win.dispatch('load');fonts.resolve();await loadImages();if(!deferStyles)await loadImages();if(finish)await clock.advance(1070);return created[0]}};
 }
 (async()=>{
   let s=setup();
@@ -88,10 +93,12 @@ function setup({reduced=false,fine=true,hidden=false,failed=false,withoutHero=fa
   assert.equal(rig.destroyed,true);assert.equal(selected.variant,'sheen');assert.equal(selected.starts,0,'selection behind the preloader does not play');
   assert.equal(selected.setGlowColor,undefined,'fixed-color variants do not expose the optional color API');
   assert.equal(s.container.dataset.motionVariant,'sheen');
+  assert.equal(selected.options.style,'pencil');assert.equal(selected.options.letterEffect,'sheen');assert.equal(selected.options.assetBase,'./motion/assets/');
   assert.equal(s.buttons.find(b=>b.dataset.motionVariant==='sheen').attributes['aria-pressed'],'true');
   await s.clock.advance(850);assert.equal(s.overlay.hidden,true);assert.equal(selected.starts,0);
   s.select('reveal');const waiting=selected;selected=s.created.at(-1);
   assert.equal(waiting.destroyed,true);assert.equal(selected.variant,'reveal');assert.equal(selected.starts,0,'switching during the visual pause still waits');
+  assert.equal(selected.options.style,'flat');assert.equal(selected.options.letterEffect,'reveal');
   await s.clock.advance(219);assert.equal(selected.starts,0);
   await s.clock.advance(1);assert.equal(selected.starts,1);assert.equal(s.container.dataset.playCount,'1');
   assert.equal(s.created.reduce((sum,r)=>sum+r.starts,0),1,'only the last selected scene autoplays');
@@ -114,11 +121,16 @@ function setup({reduced=false,fine=true,hidden=false,failed=false,withoutHero=fa
   assert.equal(s.container.dataset.progress,'0.0000');
   selected.advance(1);s.select('original');assert.equal(selected.starts,2,'clicking the active version also replays after completion');
   assert.equal(s.buttons.filter(b=>b.attributes['aria-pressed']==='true').length,1);
+  s.select('wave');selected=s.created.at(-1);
+  assert.equal(selected.variant,'wave');assert.equal(selected.options.style,'line');assert.equal(selected.options.letterEffect,'wave');
+  assert.equal(selected.options.mode,'hinge');assert.equal(selected.starts,1);assert.equal(s.container.dataset.motionVariant,'wave');
+  selected.advance(.6);s.select('wave');assert.equal(selected.starts,2);assert.equal(selected.getProgress(),0);
+  assert.equal(s.container.children.length,1);assert.equal(s.created.filter(r=>r.active).length,1);
 
   s=setup({reduced:true});await s.ready();
   s.select('reveal');selected=s.created.at(-1);
   assert.equal(selected.starts,0);assert.equal(selected.getProgress(),1);assert.equal(s.container.dataset.motionState,'open');
-  s.select('sheen');selected=s.created.at(-1);s.select('sheen');
+  s.select('sheen');selected=s.created.at(-1);s.select('sheen');s.select('wave');selected=s.created.at(-1);s.select('wave');
   assert.equal(s.created.reduce((sum,r)=>sum+r.starts,0),0,'explicit variant choices respect reduced motion');
   assert.equal(selected.getProgress(),1);assert.equal(s.container.children.length,1);
 
@@ -128,6 +140,36 @@ function setup({reduced=false,fine=true,hidden=false,failed=false,withoutHero=fa
   s.reduce.matches=true;s.reduce.dispatch('change',{matches:true});assert.equal(selected.getProgress(),1);assert.equal(selected.active,false);
 
   s=setup({missingVariants:true});rig=await s.ready();assert.equal(rig.starts,1);assert.equal(s.controls.hidden,true,'the accepted scene still works if comparison scripts are unavailable');
+  assert.equal(s.images.length,4,'unavailable optional factories do not request their assets');
+
+  s=setup({deferStyles:true});rig=await s.ready();
+  assert.equal(s.images.length,10,'four original images and six independent style images are requested');
+  assert.equal(rig.starts,1,'slow optional graphics do not delay initial playback');
+  assert.equal(s.overlay.hidden,true);assert.equal(s.controls.hidden,false);
+  assert.equal(s.buttons.find(b=>b.dataset.motionVariant==='original').disabled,false);
+  for(const id of ['reveal','sheen','wave'])assert.equal(s.buttons.find(b=>b.dataset.motionVariant===id).disabled,true);
+  s.select('reveal');assert.equal(s.created.length,1,'an undecoded style cannot replace the active scene');
+  await s.loadImages(src=>src.includes('/styles/flat-'));
+  assert.equal(s.buttons.find(b=>b.dataset.motionVariant==='reveal').disabled,false);
+  assert.equal(s.buttons.find(b=>b.dataset.motionVariant==='sheen').disabled,true);
+  s.select('reveal');selected=s.created.at(-1);assert.equal(selected.starts,1);
+  await s.clock.advance(8000);
+  assert.equal(s.container.dataset.motionVariant,'reveal');assert.equal(selected.destroyed,false,'optional style timeouts do not discard the working scene');
+  assert.equal(s.buttons.find(b=>b.dataset.motionVariant==='sheen').dataset.motionAvailability,'unavailable');
+  assert.equal(s.buttons.find(b=>b.dataset.motionVariant==='wave').disabled,true);
+  await s.loadImages();assert.equal(s.buttons.find(b=>b.dataset.motionVariant==='wave').disabled,true,'a late response after a failed deadline does not revive that style');
+
+  s=setup({failedStyles:['flat']});rig=await s.ready();
+  assert.equal(rig.starts,1);assert.equal(s.container.dataset.motionVariant,'original');
+  assert.equal(s.buttons.find(b=>b.dataset.motionVariant==='reveal').disabled,true);
+  assert.equal(s.buttons.find(b=>b.dataset.motionVariant==='sheen').disabled,false);
+  s.select('reveal');assert.equal(s.created.length,1,'failed decoding disables only its own variant');
+  s.select('wave');selected=s.created.at(-1);assert.equal(selected.variant,'wave');assert.equal(selected.starts,1);
+
+  s=setup({throwStyles:['line']});rig=await s.ready();rig.advance(.4);s.select('wave');
+  assert.equal(s.container.dataset.motionVariant,'original');assert.equal(rig.destroyed,false);assert.equal(rig.active,true);
+  assert.equal(s.container.children.length,1);assert.equal(s.buttons.find(b=>b.dataset.motionVariant==='wave').disabled,true);
+  rig.advance(1);assert.equal(s.container.dataset.motionState,'open','an optional constructor error preserves the original rig and callbacks');
 
   s=setup({failed:true});await s.ready();assert.equal(s.container.dataset.motionState,'fallback');assert.equal(s.created.length,0);assert.equal(s.fallback.hidden,false);
   assert.equal(s.controls.hidden,true,'failed initialization keeps unusable comparison controls hidden');
@@ -146,5 +188,5 @@ function setup({reduced=false,fine=true,hidden=false,failed=false,withoutHero=fa
     'assets/earbuds.png':'732230cea85027557355891848f474c406615ca6f65e4e68a1cae26e8f92d349'
   };
   for(const[name,sha]of Object.entries(approved))assert.equal(createHash('sha256').update(fs.readFileSync(path.join(root,'dist/motion',name))).digest('hex'),sha,`approved source/asset retained: ${name}`);
-  console.log('PASS: decoded initialization, loader/fade/pause, remembered early selection, forced same-version replay, rapid variant changes, one mounted timeline, stale callback isolation, hover/keyboard/visibility lifecycle, reduced motion, failure fallback and unchanged approved assets.');
+  console.log('PASS: original initialization independent of optional styles, four variant mappings, per-style readiness/failure/timeout, loader selection, forced replay, rapid switches, atomic replacement, stale callback isolation, lifecycle/reduced motion and unchanged approved assets.');
 })().catch(error=>{console.error(error);process.exitCode=1});
