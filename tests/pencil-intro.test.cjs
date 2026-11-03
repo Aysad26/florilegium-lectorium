@@ -1,0 +1,80 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+class Element{
+  constructor(tag){this.tagName=tag;this.children=[];this.attrs={};this.dataset={};this.style={};}
+  setAttribute(k,v){this.attrs[k]=String(v);if(k.startsWith('data-'))this.dataset[k.slice(5).replace(/-([a-z])/g,(_,c)=>c.toUpperCase())]=String(v);}
+  appendChild(n){this.children.push(n);n.parentNode=this;return n;}
+  remove(){if(this.parentNode)this.parentNode.children=this.parentNode.children.filter(n=>n!==this);}
+}
+const walk=n=>[n,...n.children.flatMap(walk)];
+function setup(style='pencil'){
+  let now=1000,nextId=0,completed=0;
+  const frames=new Map(),events={};
+  const document={hidden:false,createElementNS:(_,t)=>new Element(t),addEventListener(n,fn){events[n]=fn;},removeEventListener(n){delete events[n];}};
+  const window={};
+  const runtime=vm.createContext({document,window,performance:{now:()=>now},requestAnimationFrame(fn){const id=++nextId;frames.set(id,fn);return id;},cancelAnimationFrame(id){frames.delete(id);}});
+  for(const name of ['lid.js','styled-lettering.js','styled-motion.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../dist/motion',name),'utf8'),runtime);
+  const scene=window.createFlorilegiumStyledMotion(new Element('div'),{style,onComplete(){completed++;}});
+  return{scene,document,events,frames,get completed(){return completed;},frame(at){now=at;const pending=[...frames.values()];frames.clear();for(const fn of pending)fn(now);}};
+}
+const s=setup(),nodes=walk(s.scene.svg),find=layer=>nodes.find(n=>n.dataset.layer===layer);
+const mask=find('pencil-draw-mask'),art=find('pencil-artwork'),bloom=find('bouquet-and-earbuds'),word=find('lettering');
+assert.ok(mask&&art,'the pencil drawing owns one reveal mask around its complete artwork');
+assert.equal(art.attrs.mask,`url(#${mask.attrs.id})`);
+const strokes=walk(mask).filter(n=>Object.hasOwn(n.dataset,'drawStroke'));
+const full=walk(mask).find(n=>n.tagName==='rect'&&n.attrs.fill==='white');
+assert.ok(strokes.length>=3,'several brush strokes draw the artwork instead of one overall opacity fade');
+assert.ok(full,'the completed drawing has an explicit full-coverage state');
+assert.equal(Number(s.scene.svg.dataset.duration),1300);
+assert.ok(Number(s.scene.svg.dataset.duration)<=1400,'the timeline leaves a small rendering allowance below the requested limit');
+const snapshot=()=>JSON.stringify(nodes.map(n=>({attrs:n.attrs,data:n.dataset})));
+function assertBlank(){
+  assert.equal(art.attrs.mask,`url(#${mask.attrs.id})`,'replay restores the drawing mask');
+  assert.equal(Number(full.attrs.opacity),0);
+  assert.ok(strokes.every(n=>Number(n.attrs['stroke-dashoffset'])>=Number(n.attrs.pathLength||1)),'all drawing strokes are hidden at the beginning');
+  assert.equal(Number(s.scene.svg.dataset.drawProgress),0);
+  assert.equal(Number(s.scene.svg.dataset.lidOpen),0);
+  assert.equal(Number(bloom.attrs.opacity),0);
+}
+s.scene.seek(0);assertBlank();
+const blank=snapshot();
+s.scene.seek(.16);
+assert.equal(s.scene.svg.dataset.phase,'drawing');
+assert.ok(Number(s.scene.svg.dataset.drawProgress)>0&&Number(s.scene.svg.dataset.drawProgress)<1);
+assert.ok(strokes.some(n=>Number(n.attrs['stroke-dashoffset'])<Number(n.attrs.pathLength||1)),'paint is progressively revealed during the intro');
+assert.equal(Number(full.attrs.opacity),0,'the brush effect is not bypassed halfway through');
+assert.equal(Number(s.scene.svg.dataset.lidOpen),0,'the case stays closed until the drawing is complete');
+assert.equal(Number(bloom.attrs.opacity),0,'flowers cannot emerge while the case is being drawn');
+assert.equal(Number(word.dataset.activation),0,'the lettering highlight waits until the opening');
+const partial=snapshot();
+s.scene.seek(.32);
+assert.equal(Number(s.scene.svg.dataset.drawProgress),1);
+assert.equal(Number(full.attrs.opacity),1,'the mask fully covers the future moving lid before opening begins');
+assert.equal(art.attrs.mask,'none','the fully drawn artwork no longer needs mask compositing');
+assert.equal(Number(s.scene.svg.dataset.lidOpen),0);
+s.scene.seek(.34);assert.ok(Number(s.scene.svg.dataset.lidOpen)>0,'opening begins immediately after the last drawing stroke');
+s.scene.seek(.8);assert.equal(Number(s.scene.svg.dataset.lidOpen),1);assert.equal(Number(bloom.attrs.opacity),1);
+s.scene.seek(.9);assert.ok(Number(word.dataset.activation)>0&&Number(word.dataset.activation)<1,'the existing pencil lettering effect occurs inside the shortened timeline');
+s.scene.seek(1);
+assert.equal(Number(s.scene.svg.dataset.motionProgress),1);
+assert.equal(Number(full.attrs.opacity),1);
+assert.equal(Number(word.dataset.activation),1);
+assert.equal(s.scene.svg.dataset.phase,'open');
+assert.ok(!art.attrs.opacity||Number(art.attrs.opacity)===1,'the complete artwork does not use a whole-object fade');
+const final=snapshot();
+s.scene.seek(0);assertBlank();assert.equal(snapshot(),blank,'rewinding clears both the mask and the animation');
+s.scene.seek(.16);assert.equal(snapshot(),partial,'seeking through the paint strokes is deterministic');
+s.scene.seek(1);assert.equal(snapshot(),final,'a reduced-motion seek to the end displays the full finished illustration');
+s.scene.seek(0);s.scene.play();s.frame(1000);
+s.frame(2299);assert.equal(s.completed,0,'the complete timeline has not ended a millisecond early');
+s.frame(2300);assert.equal(s.completed,1,'drawing, opening, flowers and lettering finish in 1300ms, below the 1400ms limit');
+assert.equal(s.scene.getProgress(),1);assert.equal(s.frames.size,0);
+s.scene.play();assert.equal(s.scene.getProgress(),0,'replay starts with the drawing again');s.frame(2500);s.frame(3600);assert.equal(s.completed,2);
+const delayed=setup();delayed.scene.play();delayed.frame(1250);
+assert.ok(delayed.scene.getProgress()>.17,'a delayed first frame still counts time since play()');
+delayed.frame(2300);assert.equal(delayed.completed,1,'first-frame latency cannot extend the 1300ms duration');
+for(const style of ['flat','line']){
+  const other=setup(style);assert.equal(Number(other.scene.svg.dataset.duration),3600,'the other variants retain their approved timing');
+  assert.ok(!walk(other.scene.svg).some(n=>n.dataset.layer==='pencil-draw-mask'),'no drawing effect is applied to the other styles');
+}
+console.log('PASS: pencil strokes reveal a closed case before opening; bouquet and existing lettering complete in 1300ms, below the 1400ms limit; seek, replay, final-state accessibility and other styles are preserved.');

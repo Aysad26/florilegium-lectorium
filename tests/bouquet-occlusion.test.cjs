@@ -23,7 +23,7 @@ function transformPoint(text,x,y){
 for(const style of ['flat','pencil','line']){
   const scene=window.createFlorilegiumStyledMotion(new Element('div'),{style});
   const bloom=walk(scene.svg).find(n=>n.dataset.layer==='bouquet-and-earbuds');
-  const layers=scene.svg.children;
+  const layers=(walk(scene.svg).find(n=>n.dataset.layer==='pencil-artwork')||scene.svg).children;
   assert.ok(layers.findIndex(n=>n.dataset.layer==='contents')<layers.findIndex(n=>n.dataset.layer==='front-shell'),'front shell and white rim stay in front');
   for(let frame=0;frame<=1000;frame++){
     scene.seek(frame/1000);
@@ -32,9 +32,10 @@ for(const style of ['flat','pencil','line']){
       assert.ok(newY>=y-.01,`${style} lower artwork edge lifted at ${frame/1000}: ${x},${y} -> ${newY}`);
     }
   }
-  scene.seek(.5624);const peak=bloom.attrs.transform;
+  const peakTime=style==='pencil'?.32+.68*.5624:.5624;
+  scene.seek(peakTime);const peak=bloom.attrs.transform;
   assert.ok(transformPoint(peak,627,245)[1]<230,'the flowers retain their upward bounce');
   scene.seek(1);for(const point of [[197,574],[627,245],[1057,638]])assert.deepEqual(transformPoint(bloom.attrs.transform,...point),point,'approved final artwork stays unchanged');
-  scene.seek(0);scene.seek(.5624);assert.equal(bloom.attrs.transform,peak,'replay and seek are deterministic');
+  scene.seek(0);scene.seek(peakTime);assert.equal(bloom.attrs.transform,peak,'replay and seek are deterministic');
 }
 console.log('PASS: all three bouquets retain their bounce while every lower crop-edge point stays behind its original rim height throughout opening and sway.');
