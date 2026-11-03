@@ -1,0 +1,116 @@
+{
+  "images": [
+    {
+      "file": "assets/img000052.svg",
+      "bytes": 781,
+      "width": "28",
+      "height": "16.0003",
+      "viewBox": "0 0 28 16.0003"
+    },
+    {
+      "file": "assets/img02.png",
+      "bytes": 1105343,
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGBA"
+    },
+    {
+      "file": "assets/img2262420725744.svg",
+      "bytes": 59632,
+      "width": "92",
+      "height": "68.3585",
+      "viewBox": "0 0 92 68.3585"
+    },
+    {
+      "file": "assets/imgCover169.png",
+      "bytes": 1905722,
+      "width": 1600,
+      "height": 900,
+      "mode": "RGBA"
+    },
+    {
+      "file": "assets/imgCover170.png",
+      "bytes": 1499426,
+      "width": 1600,
+      "height": 900,
+      "mode": "RGBA"
+    },
+    {
+      "file": "assets/imgCover171.png",
+      "bytes": 244241,
+      "width": 1600,
+      "height": 900,
+      "mode": "RGBA"
+    },
+    {
+      "file": "assets/imgCover172.png",
+      "bytes": 3543141,
+      "width": 1600,
+      "height": 900,
+      "mode": "RGBA"
+    },
+    {
+      "file": "assets/imgCover173.png",
+      "bytes": 3342464,
+      "width": 1600,
+      "height": 900,
+      "mode": "RGBA"
+    },
+    {
+      "file": "assets/imgCover174.png",
+      "bytes": 3874936,
+      "width": 1600,
+      "height": 900,
+      "mode": "RGBA"
+    },
+    {
+      "file": "assets/imgImage1.png",
+      "bytes": 344818,
+      "width": 432,
+      "height": 548,
+      "mode": "RGB"
+    }
+  ],
+  "fonts": [
+    {
+      "file": "assets/fonts/literata-500.ttf",
+      "bytes": 170812,
+      "family": "Literata Medium",
+      "style": "Regular",
+      "weight": 500,
+      "cyrillicVerified": true
+    },
+    {
+      "file": "assets/fonts/literata-600.ttf",
+      "bytes": 170948,
+      "family": "Literata SemiBold",
+      "style": "Regular",
+      "weight": 600,
+      "cyrillicVerified": true
+    },
+    {
+      "file": "assets/fonts/manrope-400.ttf",
+      "bytes": 96200,
+      "family": "Manrope",
+      "style": "Regular",
+      "weight": 400,
+      "cyrillicVerified": true
+    },
+    {
+      "file": "assets/fonts/manrope-600.ttf",
+      "bytes": 96348,
+      "family": "Manrope SemiBold",
+      "style": "Regular",
+      "weight": 600,
+      "cyrillicVerified": true
+    },
+    {
+      "file": "assets/fonts/manrope-700.ttf",
+      "bytes": 96188,
+      "family": "Manrope",
+      "style": "Bold",
+      "weight": 700,
+      "cyrillicVerified": true
+    }
+  ]
+}
